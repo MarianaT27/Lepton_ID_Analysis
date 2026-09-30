@@ -14,7 +14,8 @@ set -euo pipefail
 : "${ROOTTRAINING_DIR:=/Users/mariana/Documents/LeptonID/rootTraining}"
 : "${WEIGHTS6_DIR:=/Users/mariana/Work/6-BDT-MLP}"          # pattern: $WEIGHTS6_DIR/dataset_<name>_mod/weights/
 : "${WEIGHTS9_DIR:=/Users/mariana/Documents/LeptonID/9-BDT-MLP}"  # pattern: $WEIGHTS9_DIR/dataset_<name>/weights/
-: "${DATA_VALIDATION_FILE:=}"                                 # optional: real-Data file for the Data inference leg (F18in_positives schema: tree "results", branches *_D)
+: "${DATA_VALIDATION_FILE:=}"                                 # optional: small real-Data file for the Data inference leg (F18in_positives schema: tree "results", branches *_D)
+: "${IFARM_DATA_DIR:=}"                                       # optional: dir with <Period>_All.root real-Data files from toroot_v2.C (tree "analysis", branches positron_*/electron_*), e.g. /work/clas12/mtenorio/Analysis/Latest_Final
 : "${DATASETS:=F18in_positives F18in_negatives F18out_positives F18out_negatives}"
 : "${OUT_DIR:=$(pwd)/benchmark_run}"
 
@@ -23,7 +24,7 @@ TEMPLATES="$SCRIPT_DIR/templates"
 
 command -v root >/dev/null 2>&1 || { echo "ERROR: 'root' not found on PATH. Load ROOT first (see README_ifarm.md)."; exit 1; }
 
-mkdir -p "$OUT_DIR"/{train,infer,infer_data,logs}
+mkdir -p "$OUT_DIR"/{train,infer,infer_data,infer_ifarm_data,logs}
 cat > "$OUT_DIR/reader_block_6.txt" << 'EOF'
 EOF
 cat > "$OUT_DIR/reader_block_9.txt" << 'EOF'
@@ -123,11 +124,44 @@ gen_infer_data() {
   rm -f "$OUT_DIR/infer_data/${fn}.C.tmp"
 }
 
+# ---------- generate inference (ifarm real Data) macros ----------
+# Maps a dataset name to its (file, branch-prefix) pair, per toroot_v2.C's output:
+# one <Period>_All.root file holds both positron_* (positives model) and electron_*
+# (negatives model) branches in the same "analysis" tree.
+gen_infer_ifarm_data() {
+  local name=$1 nv=$2
+  local fn="infer_ifarm_${name}_${nv}var" period species weightdir blockfile
+  period="${name%_*}"                 # F18in_positives -> F18in
+  case "$name" in
+    *_positives) species="positron" ;;
+    *_negatives) species="electron" ;;
+    *) echo "ERROR: don't know species for dataset '$name' (expected *_positives or *_negatives)"; return 1 ;;
+  esac
+  if [ "$nv" = "6" ]; then
+    weightdir="${WEIGHTS6_DIR}/dataset_${name}_mod/weights/"; blockfile="$OUT_DIR/reader_block_6.txt"
+  else
+    weightdir="${WEIGHTS9_DIR}/dataset_${name}/weights/"; blockfile="$OUT_DIR/reader_block_9.txt"
+  fi
+  sed \
+    -e "s/INFERFUNC/${fn}/g" \
+    -e "s/__NAME__/${name}/g" \
+    -e "s/__NVARS__/${nv}/g" \
+    -e "s/__SPECIES__/${species}/g" \
+    -e "s#__WEIGHTDIR__#${weightdir}#g" \
+    -e "s#__DATAFILE__#${IFARM_DATA_DIR}/${period}_All.root#g" \
+    "$TEMPLATES/infer_ifarm_data_template.C" > "$OUT_DIR/infer_ifarm_data/${fn}.C.tmp"
+  sed -e "/__READERVARBLOCK__/r ${blockfile}" -e "/__READERVARBLOCK__/d" "$OUT_DIR/infer_ifarm_data/${fn}.C.tmp" > "$OUT_DIR/infer_ifarm_data/${fn}.C"
+  rm -f "$OUT_DIR/infer_ifarm_data/${fn}.C.tmp"
+}
+
 echo "=== Generating macros ==="
 for name in $DATASETS; do
   for nv in 6 9; do
     gen_train "$name" "$nv"
     gen_infer "$name" "$nv"
+    if [ -n "$IFARM_DATA_DIR" ]; then
+      gen_infer_ifarm_data "$name" "$nv"
+    fi
   done
 done
 if [ -n "$DATA_VALIDATION_FILE" ]; then
@@ -162,6 +196,16 @@ if [ -n "$DATA_VALIDATION_FILE" ]; then
   done
 fi
 
+if [ -n "$IFARM_DATA_DIR" ]; then
+  echo "=== Running inference (ifarm real Data, all datasets) ==="
+  for name in $DATASETS; do
+    for nv in 6 9; do
+      fn="infer_ifarm_${name}_${nv}var"
+      ( cd "$OUT_DIR/infer_ifarm_data" && root -l -b -q "${fn}.C" ) > "$OUT_DIR/logs/${fn}.log" 2>&1
+    done
+  done
+fi
+
 echo
 echo "=== RESULTS ==="
 echo "--- Training: elapsed time per method (order booked: MLP then BDT) ---"
@@ -188,6 +232,17 @@ if [ -n "$DATA_VALIDATION_FILE" ]; then
     fn="infer_data_F18in_positives_${nv}var"
     echo "$fn:"
     grep -E "Total Events|Total Time" "$OUT_DIR/logs/${fn}.log" | sed 's/^/    /'
+  done
+fi
+if [ -n "$IFARM_DATA_DIR" ]; then
+  echo
+  echo "--- Inference (ifarm real Data): speed report ---"
+  for name in $DATASETS; do
+    for nv in 6 9; do
+      fn="infer_ifarm_${name}_${nv}var"
+      echo "$fn:"
+      grep -E "Total Events|Total Time" "$OUT_DIR/logs/${fn}.log" | sed 's/^/    /'
+    done
   done
 fi
 echo
