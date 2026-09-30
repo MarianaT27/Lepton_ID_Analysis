@@ -11,11 +11,15 @@
 
 set -euo pipefail
 
-: "${ROOTTRAINING_DIR:=/Users/mariana/Documents/LeptonID/rootTraining}"
-: "${WEIGHTS6_DIR:=/Users/mariana/Work/6-BDT-MLP}"          # pattern: $WEIGHTS6_DIR/dataset_<name>_mod/weights/
-: "${WEIGHTS9_DIR:=/Users/mariana/Documents/LeptonID/9-BDT-MLP}"  # pattern: $WEIGHTS9_DIR/dataset_<name>/weights/
-: "${DATA_VALIDATION_FILE:=}"                                 # optional: small real-Data file for the Data inference leg (F18in_positives schema: tree "results", branches *_D)
-: "${IFARM_DATA_DIR:=}"                                       # optional: dir with <Period>_All.root real-Data files from toroot_v2.C (tree "analysis", branches positron_*/electron_*), e.g. /work/clas12/mtenorio/Analysis/Latest_Final
+# No machine-specific defaults on purpose — every path below must be set explicitly by the
+# caller (env vars), so this script never silently points at paths that only exist on the
+# machine it was originally written on. Each leg below runs only if the variable(s) it needs
+# are actually set; unset ones are skipped, not defaulted.
+: "${ROOTTRAINING_DIR:=}"        # set to run training + MC inference. pattern: $ROOTTRAINING_DIR/{6,9}-Variables/<name>_{Lepton,Pion}.root
+: "${WEIGHTS6_DIR:=}"            # required by any inference leg. pattern: $WEIGHTS6_DIR/dataset_<name>_mod/weights/
+: "${WEIGHTS9_DIR:=}"            # required by any inference leg. pattern: $WEIGHTS9_DIR/dataset_<name>/weights/
+: "${DATA_VALIDATION_FILE:=}"    # optional: small real-Data file for the Data inference leg (F18in_positives schema: tree "results", branches *_D)
+: "${IFARM_DATA_DIR:=}"          # optional: dir with <Period>_All.root real-Data files from toroot_v2.C (tree "analysis", branches positron_*/electron_*), e.g. /work/clas12/mtenorio/Analysis/Latest_Final
 : "${DATASETS:=F18in_positives F18in_negatives F18out_positives F18out_negatives}"
 : "${OUT_DIR:=$(pwd)/benchmark_run}"
 
@@ -23,6 +27,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEMPLATES="$SCRIPT_DIR/templates"
 
 command -v root >/dev/null 2>&1 || { echo "ERROR: 'root' not found on PATH. Load ROOT first (see README_ifarm.md)."; exit 1; }
+
+if [ -z "$ROOTTRAINING_DIR" ] && [ -z "$DATA_VALIDATION_FILE" ] && [ -z "$IFARM_DATA_DIR" ]; then
+  echo "ERROR: nothing to do — set at least one of ROOTTRAINING_DIR (training + MC inference)," >&2
+  echo "       DATA_VALIDATION_FILE (small real-Data inference), or IFARM_DATA_DIR (ifarm real-Data" >&2
+  echo "       inference). See README_ifarm.md." >&2
+  exit 1
+fi
+if { [ -n "$ROOTTRAINING_DIR" ] || [ -n "$DATA_VALIDATION_FILE" ] || [ -n "$IFARM_DATA_DIR" ]; } \
+   && { [ -z "$WEIGHTS6_DIR" ] || [ -z "$WEIGHTS9_DIR" ]; }; then
+  echo "ERROR: WEIGHTS6_DIR and WEIGHTS9_DIR must both be set — every inference leg needs them" >&2
+  echo "       (training alone doesn't, but you almost always want inference numbers too)." >&2
+  exit 1
+fi
 
 mkdir -p "$OUT_DIR"/{train,infer,infer_data,infer_ifarm_data,logs}
 cat > "$OUT_DIR/reader_block_6.txt" << 'EOF'
@@ -155,15 +172,21 @@ gen_infer_ifarm_data() {
 }
 
 echo "=== Generating macros ==="
-for name in $DATASETS; do
-  for nv in 6 9; do
-    gen_train "$name" "$nv"
-    gen_infer "$name" "$nv"
-    if [ -n "$IFARM_DATA_DIR" ]; then
-      gen_infer_ifarm_data "$name" "$nv"
-    fi
+if [ -n "$ROOTTRAINING_DIR" ]; then
+  for name in $DATASETS; do
+    for nv in 6 9; do
+      gen_train "$name" "$nv"
+      gen_infer "$name" "$nv"
+    done
   done
-done
+fi
+if [ -n "$IFARM_DATA_DIR" ]; then
+  for name in $DATASETS; do
+    for nv in 6 9; do
+      gen_infer_ifarm_data "$name" "$nv"
+    done
+  done
+fi
 if [ -n "$DATA_VALIDATION_FILE" ]; then
   gen_infer_data 6
   gen_infer_data 9
@@ -171,22 +194,24 @@ fi
 echo "done."
 echo
 
-echo "=== Running training (this is the slow part — MLP-9var takes ~15 min/dataset) ==="
-for name in $DATASETS; do
-  for nv in 6 9; do
-    fn="train_${name}_${nv}var"
-    echo "--- $fn : $(date) ---"
-    ( cd "$OUT_DIR/train" && { time root -l -b -q "${fn}.C" ; } > "$OUT_DIR/logs/${fn}.log" 2>&1 )
+if [ -n "$ROOTTRAINING_DIR" ]; then
+  echo "=== Running training (this is the slow part — MLP-9var takes ~15 min/dataset) ==="
+  for name in $DATASETS; do
+    for nv in 6 9; do
+      fn="train_${name}_${nv}var"
+      echo "--- $fn : $(date) ---"
+      ( cd "$OUT_DIR/train" && { time root -l -b -q "${fn}.C" ; } > "$OUT_DIR/logs/${fn}.log" 2>&1 )
+    done
   done
-done
 
-echo "=== Running inference (MC) ==="
-for name in $DATASETS; do
-  for nv in 6 9; do
-    fn="infer_${name}_${nv}var"
-    ( cd "$OUT_DIR/infer" && root -l -b -q "${fn}.C" ) > "$OUT_DIR/logs/${fn}.log" 2>&1
+  echo "=== Running inference (MC) ==="
+  for name in $DATASETS; do
+    for nv in 6 9; do
+      fn="infer_${name}_${nv}var"
+      ( cd "$OUT_DIR/infer" && root -l -b -q "${fn}.C" ) > "$OUT_DIR/logs/${fn}.log" 2>&1
+    done
   done
-done
+fi
 
 if [ -n "$DATA_VALIDATION_FILE" ]; then
   echo "=== Running inference (Data, F18in_positives) ==="
