@@ -1,10 +1,12 @@
 # ML_weights_pass2
 
-BDT-only retraining round (pass2), one folder per dataset (`<Period><pos|neg>`), each with the
-6-variable (`TMVAClassification_BDT_6.weights.xml`) and 9-variable
-(`TMVAClassification_BDT_9.weights.xml`) BDT models.
+Trained BDT and MLP weight files, one folder per dataset (`<Period><pos|neg>`), each with the
+6-variable and 9-variable version of both methods:
 
-**No MLP weights exist for this round** — pass2 only retrained BDT. If/when MLP weights for
-pass2 are trained, add them here as `TMVAClassification_MLP_6.weights.xml` /
-`TMVAClassification_MLP_9.weights.xml` alongside the corresponding BDT files, matching this same
-naming convention.
+- `TMVAClassification_BDT_6.weights.xml` / `TMVAClassification_BDT_9.weights.xml`
+- `TMVAClassification_MLP_6.weights.xml` / `TMVAClassification_MLP_9.weights.xml`
+
+These are the same trained models used throughout this repo (`Timing_Results.md`,
+`Timing_Benchmark/`) — the BDT files were originally packaged here for ifarm use without their
+MLP counterparts; the MLP files were added from the original training output
+(`6-BDT-MLP`/`9-BDT-MLP` on the training machine) to complete the set with matching naming.
