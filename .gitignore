@@ -1,0 +1,3 @@
+# Large ROOT data files — regenerable, not tracked (see README.md)
+Files/
+*.root
