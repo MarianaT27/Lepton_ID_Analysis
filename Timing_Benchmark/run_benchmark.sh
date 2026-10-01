@@ -23,6 +23,7 @@ TEMPLATES="$SCRIPT_DIR/templates"
 : "${ROOTTRAINING_DIR:=}"        # set to run training + MC inference (local compute only — this data has never existed on ifarm). pattern: $ROOTTRAINING_DIR/{6,9}-Variables/<name>_{Lepton,Pion}.root
 : "${DATA_VALIDATION_FILE:=}"    # optional: small real-Data file for the Data inference leg, e.g. Files/Result_v2/pos_F18in_BDT_modFC.root (F18in_positives only; tree "results", branches *_D) — exists on the Mac only, not ifarm
 : "${IFARM_DATA_DIR:=}"          # optional: dir with <Period>_All.root real-Data files from toroot_v2.C (tree "analysis", branches positron_*/electron_*) — this is the ifarm leg, e.g. /work/clas12/mtenorio/Analysis/Latest_Final
+: "${MAX_EVENTS:=0}"             # caps the ifarm real-Data leg to the first N events per file (0 = no cap, use everything). Set this low (e.g. 10000) for a fast smoke test before committing to a full run.
 : "${DATASETS:=F18in_positives F18in_negatives F18out_positives F18out_negatives}"
 : "${OUT_DIR:=$(pwd)/benchmark_run}"
 
@@ -171,6 +172,7 @@ gen_infer_ifarm_data() {
     -e "s#__MLP_WEIGHTS__#$(weight_file "$name" "$nv" MLP)#g" \
     -e "s#__BDT_WEIGHTS__#$(weight_file "$name" "$nv" BDT)#g" \
     -e "s#__DATAFILE__#${IFARM_DATA_DIR}/${period}_All.root#g" \
+    -e "s/__MAXEVENTS__/${MAX_EVENTS}/g" \
     "$TEMPLATES/infer_ifarm_data_template.C" > "$OUT_DIR/infer_ifarm_data/${fn}.C.tmp"
   sed -e "/__READERVARBLOCK__/r ${blockfile}" -e "/__READERVARBLOCK__/d" "$OUT_DIR/infer_ifarm_data/${fn}.C.tmp" > "$OUT_DIR/infer_ifarm_data/${fn}.C"
   rm -f "$OUT_DIR/infer_ifarm_data/${fn}.C.tmp"
@@ -231,7 +233,9 @@ if [ -n "$IFARM_DATA_DIR" ]; then
   for name in $DATASETS; do
     for nv in 6 9; do
       fn="infer_ifarm_${name}_${nv}var"
+      echo "--- $fn : starting $(date) ---"
       ( cd "$OUT_DIR/infer_ifarm_data" && root -l -b -q "${fn}.C" ) > "$OUT_DIR/logs/${fn}.log" 2>&1
+      echo "--- $fn : finished $(date) ---"
     done
   done
 fi

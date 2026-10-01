@@ -56,11 +56,20 @@ __READERVARBLOCK__
     theTree->SetBranchAddress( "__SPECIES___m2ecout", &d_m2ECOUT );
 
     Long64_t nEntries = theTree->GetEntries();
+    Long64_t maxEvents = __MAXEVENTS__;  // 0 means "no cap, use all entries"
+    if (maxEvents > 0 && maxEvents < nEntries) nEntries = maxEvents;
     std::cout << "--- Processing: " << nEntries << " Data events" << std::endl;
 
-    TStopwatch timerBDT, timerMLP;
+    TStopwatch timerBDT, timerMLP, timerWall;
     timerBDT.Reset();
     timerMLP.Reset();
+    timerWall.Start();
+
+    // Progress print every ~5% (at least every 50k events) so a long run shows visible,
+    // periodically-flushed output instead of going silent until the very end — makes it
+    // possible to tell "slow but working" apart from "actually hung" by just tailing the log.
+    Long64_t progressStep = nEntries / 20;
+    if (progressStep < 50000) progressStep = 50000;
 
     Float_t scoreBDT, scoreMLP;
     for (Long64_t ievt=0; ievt < nEntries; ievt++) {
@@ -76,6 +85,13 @@ __READERVARBLOCK__
         timerMLP.Start(kFALSE);
         scoreMLP = reader->EvaluateMVA("MLP method");
         timerMLP.Stop();
+
+        if (ievt > 0 && ievt % progressStep == 0) {
+            std::cout << "    ... " << ievt << " / " << nEntries << " events ("
+                      << (100.0*ievt/nEntries) << "%), wall time so far: "
+                      << timerWall.RealTime() << " s" << std::endl << std::flush;
+            timerWall.Continue();
+        }
     }
     input->Close();
 

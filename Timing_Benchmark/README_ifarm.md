@@ -65,20 +65,64 @@ bash Lepton_ID_Analysis/Timing_Benchmark/run_benchmark.sh
 
 This generates and runs `infer_ifarm_<dataset>_{6,9}var.C` for all 4 datasets — 16 runs total,
 each reading the `analysis` tree's `positron_*` or `electron_*` branches through the same
-`TMVA::Reader` + `TStopwatch` timing used for the Mac numbers. Pure inference on real production
-statistics finishes in well under an hour — no SLURM job strictly required, but still better run
-off the login node if possible (see below).
+`TMVA::Reader` + `TStopwatch` timing used for the Mac numbers.
+
+**Test on a small subset first.** The real `<Period>_All.root` files can be far larger than
+anything benchmarked locally, so there's no good way to predict runtime in advance. Set
+`MAX_EVENTS` to cap each file to its first N events for a fast sanity check before committing to
+the full run:
+
+```bash
+export MAX_EVENTS=10000   # ~seconds, not hours
+bash Lepton_ID_Analysis/Timing_Benchmark/run_benchmark.sh
+```
+
+This confirms the weights load and the real schema reads correctly, and gives you a real
+per-event rate to extrapolate from (unset `MAX_EVENTS`, or set it to `0`, to run the full file).
+Each run also now prints progress every ~5% of its events to its log file — tail a log to tell
+"slow but working" apart from "actually hung":
+
+```bash
+tail -f benchmark_run/logs/infer_ifarm_F18in_positives_6var.log
+```
 
 **Caveat:** `toroot_v2.C` computes `theta`/`phi` in **degrees**; if training used radians, the
 BDT/MLP *scores* from this leg won't be physically meaningful — but the timing numbers are
 unaffected either way (`TMVA::Reader::EvaluateMVA` does the same fixed amount of work regardless
 of the input values).
 
-## 3b. Run on a dedicated allocation, not the login node
+## 3a. Keep it running after you log out (no SLURM)
+
+If you're running this interactively on a login node rather than submitting it as a job, closing
+your terminal sends SIGHUP to everything running in it — including the benchmark. `tmux` (or
+`screen`) detaches the session from your terminal entirely, so logging out doesn't touch it:
+
+```bash
+tmux new -s timing          # starts a new persistent session
+# ... load ROOT, export IFARM_DATA_DIR, run the script as above ...
+```
+
+Detach any time with `Ctrl-b` then `d` (the job keeps running) and close your terminal freely.
+Reattach later from any login to check progress:
+
+```bash
+tmux attach -t timing
+```
+
+If `tmux` isn't available, `nohup ... &` works too, just without the ability to reattach and
+watch it live — only `tail -f` the log:
+
+```bash
+nohup bash Lepton_ID_Analysis/Timing_Benchmark/run_benchmark.sh > run.log 2>&1 &
+disown
+```
+
+## 3b. Run on a dedicated allocation instead, if you change your mind about SLURM
 
 ifarm login nodes are shared across many users; running the benchmark there makes the timing
-numbers noisy (or misleading — you'd be measuring contention, not the model). Submit it as a
-SLURM job with a fixed core count instead:
+numbers noisier (you're partly measuring contention, not the model) — usually not enough to
+matter for a sanity-check comparison point, but worth knowing. If you'd rather have a clean,
+dedicated run, submit it as a SLURM job with a fixed core count instead:
 
 ```bash
 cat > submit_benchmark.slurm << 'EOF'
