@@ -62,19 +62,56 @@ the ~15–20% gap is most plausibly statistical noise from the much smaller even
 653,901) rather than a real Data-vs-MC effect — inference cost is driven by walking the same
 trained tree ensemble / forward pass regardless of the input sample's origin.
 
-## Headline numbers for the paper (averaged across the 4 datasets, MC)
+## Inference time — ifarm real Data (all 4 datasets)
 
-| Model | Training time | Inference time/event |
+Measured on JLab's ifarm (`ifarm2401`/`ifarm2402.jlab.org`, Linux, ROOT 6.38/04), via
+`Timing_Benchmark/run_benchmark.sh`'s `IFARM_DATA_DIR` leg, reading the real production files
+`toroot_v2.C` writes to `/work/clas12/mtenorio/Analysis/Latest_Final/{F18in,F18out}_All.root`
+(tree `analysis`, `positron_*`/`electron_*` branches) — same `TMVA::Reader` + `TStopwatch`
+methodology as the other legs above, using the same `Weights/ML_weights_pass2/` models. Run
+directly on a shared interactive node (not a dedicated allocation), capped to the first
+1,000,000 events per file via `MAX_EVENTS` — results had already converged at 100k events
+(sub-2% drift going to 1M), so this is a stable, representative number rather than a partial one.
+
+| Dataset | BDT-6var (µs/evt) | MLP-6var (µs/evt) | BDT-9var (µs/evt) | MLP-9var (µs/evt) |
+|---|---|---|---|---|
+| F18in_positives  | 17.60 | 2.56 | 18.36 | 3.02 |
+| F18in_negatives  | 18.33 | 2.58 | 18.33 | 2.99 |
+| F18out_positives | 18.34 | 2.54 | 18.21 | 3.07 |
+| F18out_negatives | 22.66 | 2.68 | 22.27 | 3.11 |
+| **Average**      | **19.2** | **2.59** | **19.3** | **3.05** |
+
+**ifarm vs. Mac M1 (both MC/real-production inference, not the small 2,165-event sample):**
+
+| Model | Mac M1 (653k MC events) | ifarm (1M real-Data events) |
 |---|---|---|
-| BDT, 6 variables | ~74 s | ~33.3 µs |
-| MLP, 6 variables | ~9m50s | ~2.4 µs |
-| BDT, 9 variables | ~94 s | ~33.8 µs |
-| MLP, 9 variables | ~13m37s | ~3.1 µs |
+| BDT, 6 variables | 33.3 µs/evt | 19.2 µs/evt |
+| MLP, 6 variables | 2.44 µs/evt | 2.59 µs/evt |
+| BDT, 9 variables | 33.8 µs/evt | 19.3 µs/evt |
+| MLP, 9 variables | 3.08 µs/evt | 3.05 µs/evt |
 
-**Takeaways:** MLP trains far slower than BDT (~8x) but infers far faster (~14x) — BDT evaluation
-dominates inference cost because it walks all 850 trees per event, while the MLP is a single
-small forward pass. Going from 6 to 9 variables adds modest cost to both training (+27% BDT,
-+38% MLP) and inference (+2% BDT, +26% MLP), consistent with the added input dimensionality.
+ifarm's BDT inference is ~40% faster per event than the M1 despite running on a heavily shared,
+contended node (observed load average ~500–700 from other users' jobs at the time) rather than a
+clean dedicated benchmark environment — likely a faster per-core rate for this tree-traversal
+workload on ifarm's server-class CPUs. MLP timing is essentially identical on both machines,
+consistent with MLP being cheap enough that hardware differences barely register.
+
+## Headline numbers for the paper (averaged across the 4 datasets)
+
+| Model | Training time (Mac, MC) | Inference time/event (Mac, MC) | Inference time/event (ifarm, real Data) |
+|---|---|---|---|
+| BDT, 6 variables | ~74 s | ~33.3 µs | ~19.2 µs |
+| MLP, 6 variables | ~9m50s | ~2.4 µs | ~2.6 µs |
+| BDT, 9 variables | ~94 s | ~33.8 µs | ~19.3 µs |
+| MLP, 9 variables | ~13m37s | ~3.1 µs | ~3.1 µs |
+
+**Takeaways:** MLP trains far slower than BDT (~8x) but infers far faster (~14x on the Mac, ~7x on
+ifarm) — BDT evaluation dominates inference cost because it walks all 850 trees per event, while
+the MLP is a single small forward pass. Going from 6 to 9 variables adds modest cost to both
+training (+27% BDT, +38% MLP) and inference (+2% BDT, +26% MLP on the Mac; negligible on ifarm),
+consistent with the added input dimensionality. Training was only ever measured on local compute
+(the MC training samples have never existed on ifarm); inference was measured on both, as the
+only leg that's actually comparable across environments.
 
 ## Reproducing this benchmark
 
