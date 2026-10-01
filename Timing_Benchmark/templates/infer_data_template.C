@@ -30,10 +30,8 @@ __READERVARBLOCK__
     reader->AddVariable( "m2ECIN", &m2ECIN );
     reader->AddVariable( "m2ECOUT", &m2ECOUT );
 
-    TString dir    = "__WEIGHTDIR__";
-    TString prefix = "TMVAClassification";
-    reader->BookMVA( "MLP method", dir + prefix + "_MLP.weights.xml" );
-    reader->BookMVA( "BDT method", dir + prefix + "_BDT.weights.xml" );
+    reader->BookMVA( "MLP method", "__MLP_WEIGHTS__" );
+    reader->BookMVA( "BDT method", "__BDT_WEIGHTS__" );
 
     TString file = "__DATAFILE__";
     TFile *input = new TFile(file);

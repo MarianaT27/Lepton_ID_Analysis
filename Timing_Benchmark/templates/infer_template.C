@@ -72,11 +72,8 @@ __READERVARBLOCK__
     resN->Branch("m2ECIN_N", &m2ECIN_N, "m2ECIN_N/F");
     resN->Branch("m2ECOUT_N", &m2ECOUT_N, "m2ECOUT_N/F");
 
-    TString dir    = "__WEIGHTDIR__";
-    TString prefix = "TMVAClassification";
-
-    reader->BookMVA( "MLP method", dir + prefix + "_MLP.weights.xml" );
-    reader->BookMVA( "BDT method", dir + prefix + "_BDT.weights.xml" );
+    reader->BookMVA( "MLP method", "__MLP_WEIGHTS__" );
+    reader->BookMVA( "BDT method", "__BDT_WEIGHTS__" );
 
     TString file1 = "__TRAINDIR__/" + name + "_Lepton.root";
     TFile *input1 = new TFile(file1);
