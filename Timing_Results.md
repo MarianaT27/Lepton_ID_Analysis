@@ -2,13 +2,19 @@
 
 Measured 2026-09-30 on: Apple M1, 8 cores, macOS 27.0, ROOT 6.28/04 (conda env `my_root_env`), single-threaded (no `EnableImplicitMT`).
 
-Training was rerun from scratch with the exact hyperparameters in `TMVAClassification.C`
-(BDT: NTrees=850, MaxDepth=5, AdaBoost; MLP: NCycles=600, HiddenLayers=N+5) into a disposable
-dataset directory — **the production weight files in `6-BDT-MLP/` and the `9-BDT-MLP/` folder
-were not touched or overwritten** (TMVA's train/test split is randomized per run, so a rerun
-does not reproduce bit-identical weights). Inference timing used the actual production weight
-files already shipped in this repo / on this machine, run via `TMVA::Reader` exactly as
-`TMVAClassificationApplication.C` does, timed with `TStopwatch` around each `EvaluateMVA` call.
+Training was rerun from scratch with the exact hyperparameters matching the production weights in
+`Weights/ML_weights_pass2/` (BDT: NTrees=850, **MaxDepth=3**, AdaBoost; MLP: NCycles=600,
+HiddenLayers=N+5) into a disposable dataset directory — **the production weight files were not
+touched or overwritten** (TMVA's train/test split is randomized per run, so a rerun does not
+reproduce bit-identical weights). Inference timing used the actual production weight files
+already shipped in this repo, run via `TMVA::Reader` exactly as `TMVAClassificationApplication.C`
+does, timed with `TStopwatch` around each `EvaluateMVA` call.
+
+Training numbers below were remeasured 2026-10-13 after correcting the benchmark's `MaxDepth` from
+an earlier incorrect 5 to the production value of 3 (verified directly against all 12 BDT weight
+files) — this changes only *training* time (BDT trains faster with shallower trees); inference
+numbers are unaffected, since inference reads the same unchanged production weight files either
+way, and are left as originally measured.
 
 **Training and background/signal labeling is done on Monte Carlo**, not real data: the
 `_Lepton.root`/`_Pion.root` samples are built (by `toroot_v2MC.C`) from GEMC simulation using
@@ -22,13 +28,23 @@ real-Data inference measurement is given further down for comparison.
 
 | Dataset | BDT-6var | MLP-6var | BDT-9var | MLP-9var |
 |---|---|---|---|---|
-| F18in_positives  | 82.6 s | 616 s (10m16s) | 100 s  | 825 s (13m45s) |
-| F18in_negatives  | 72.5 s | 562 s (9m22s)  | 85.3 s | 814 s (13m34s) |
-| F18out_positives | 67.5 s | 580 s (9m40s)  | 90.9 s | 786 s (13m06s) |
-| F18out_negatives | 73.1 s | 601 s (10m01s) | 98.9 s | 841 s (14m01s) |
-| **Average**      | **73.9 s** | **590 s (9m50s)** | **93.8 s** | **816 s (13m37s)** |
+| F18in_positives  | 53.3 s | 605 s (10m05s) | 66.7 s | 829 s (13m49s) |
+| F18in_negatives  | 45.8 s | 568 s (9m28s)  | 63.4 s | 772 s (12m52s) |
+| F18out_positives | 46.6 s | 583 s (9m43s)  | 61.7 s | 765 s (12m45s) |
+| F18out_negatives | 52.4 s | 606 s (10m06s) | 73.5 s | 834 s (13m54s) |
+| **Average**      | **49.5 s** | **591 s (9m51s)** | **66.3 s** | **800 s (13m20s)** |
 
-Events per run: ~353k–380k signal+background combined (~90/10 train/test split handled internally).
+With the `MaxDepth` fix, BDT trains ~33% (6var) / ~29% (9var) faster than the earlier
+(incorrect-hyperparameter) measurement — expected, since shallower trees mean less split-search
+work per tree. MLP numbers are within normal run-to-run variance of the earlier measurement, as
+expected (MLP has no `MaxDepth` parameter — unaffected by this fix).
+
+**Train/test split is exactly 50/50**, not the "~90/10" previously stated here (an unverified
+guess) — confirmed directly from the original training output's `TrainTree`/`TestTree` entry
+counts, which are identical in every one of the 6 production datasets checked (see
+`Training_Diagnostics/Training_Diagnostics.md` for full per-config numbers, signal/background
+balance, and overtraining KS values). The combined signal:background pool per dataset is also
+imbalanced (~6.1–6.8:1), with no reweighting applied — also detailed there.
 
 ## Inference time — MC (per event, evaluating one already-trained model)
 
@@ -100,15 +116,15 @@ consistent with MLP being cheap enough that hardware differences barely register
 
 | Model | Training time (Mac, MC) | Inference time/event (Mac, MC) | Inference time/event (ifarm, real Data) |
 |---|---|---|---|
-| BDT, 6 variables | ~74 s | ~33.3 µs | ~19.2 µs |
-| MLP, 6 variables | ~9m50s | ~2.4 µs | ~2.6 µs |
-| BDT, 9 variables | ~94 s | ~33.8 µs | ~19.3 µs |
-| MLP, 9 variables | ~13m37s | ~3.1 µs | ~3.1 µs |
+| BDT, 6 variables | ~50 s | ~33.3 µs | ~19.2 µs |
+| MLP, 6 variables | ~9m51s | ~2.4 µs | ~2.6 µs |
+| BDT, 9 variables | ~66 s | ~33.8 µs | ~19.3 µs |
+| MLP, 9 variables | ~13m20s | ~3.1 µs | ~3.1 µs |
 
-**Takeaways:** MLP trains far slower than BDT (~8x) but infers far faster (~14x on the Mac, ~7x on
-ifarm) — BDT evaluation dominates inference cost because it walks all 850 trees per event, while
-the MLP is a single small forward pass. Going from 6 to 9 variables adds modest cost to both
-training (+27% BDT, +38% MLP) and inference (+2% BDT, +26% MLP on the Mac; negligible on ifarm),
+**Takeaways:** MLP trains far slower than BDT (~12x) but infers far faster (~14x on the Mac, ~7x
+on ifarm) — BDT evaluation dominates inference cost because it walks all 850 trees per event,
+while the MLP is a single small forward pass. Going from 6 to 9 variables adds modest cost to both
+training (+34% BDT, +35% MLP) and inference (+2% BDT, +26% MLP on the Mac; negligible on ifarm),
 consistent with the added input dimensionality. Training was only ever measured on local compute
 (the MC training samples have never existed on ifarm); inference was measured on both, as the
 only leg that's actually comparable across environments.
