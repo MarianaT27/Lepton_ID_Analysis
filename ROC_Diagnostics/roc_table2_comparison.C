@@ -40,36 +40,45 @@ void roc_table2_comparison()
     TGraphErrors *gr_BDT6_table2 = new TGraphErrors(15, x_6bdt, y_6bdt, xerr_6bdt, fprerr_6bdt);
     TGraphErrors *gr_BDT9_table2 = new TGraphErrors(15, x_9bdt, y_9bdt, xerr_9bdt, fprerr_9bdt);
 
-    // ---- 3. Style everything ----
-    gr_BDT9->SetLineColor(kRed);              gr_BDT9->SetLineWidth(4);
-    gr_BDT6->SetLineColor(kOrange);           gr_BDT6->SetLineWidth(4);
+    // ---- 3. Style everything -- matching the target publication style: red=9var, blue=6var
+    // (same color for a variable count's simulation line and its data points), thin lines,
+    // "+" markers with error bars ----
+    gr_BDT9->SetLineColor(kRed);   gr_BDT9->SetLineWidth(2);
+    gr_BDT6->SetLineColor(kBlue);  gr_BDT6->SetLineWidth(2);
 
-    gr_BDT6_table2->SetMarkerStyle(25); gr_BDT6_table2->SetMarkerColor(kGreen+2);  gr_BDT6_table2->SetLineColor(kGreen+2);
-    gr_BDT9_table2->SetMarkerStyle(25); gr_BDT9_table2->SetMarkerColor(kMagenta+2);gr_BDT9_table2->SetLineColor(kMagenta+2);
+    gr_BDT9_table2->SetMarkerStyle(2); gr_BDT9_table2->SetMarkerColor(kRed);  gr_BDT9_table2->SetLineColor(kRed);
+    gr_BDT6_table2->SetMarkerStyle(2); gr_BDT6_table2->SetMarkerColor(kBlue); gr_BDT6_table2->SetLineColor(kBlue);
 
     // ---- 4. Draw ----
-    TCanvas *c1 = new TCanvas("c1","c1",1100,850);
+    TCanvas *c1 = new TCanvas("c1","c1",900,650);
     TMultiGraph *mg = new TMultiGraph();
-    mg->SetTitle("F18in_positives: BDT MC ROC curves vs. Table2_TPR_FPR.txt data points ; True Positives Rate ; 1 - False Positives Rate");
+    mg->SetTitle(" ; TPR ; 1-FPR");
     mg->Add(gr_BDT9, "L");
     mg->Add(gr_BDT6, "L");
-    mg->Add(gr_BDT6_table2, "P");
     mg->Add(gr_BDT9_table2, "P");
+    mg->Add(gr_BDT6_table2, "P");
     mg->Draw("A");
-    mg->GetXaxis()->SetRangeUser(0.75, 1.025);
+    mg->GetXaxis()->SetRangeUser(0.85, 1.02);
     mg->GetYaxis()->SetRangeUser(0.75, 1.01);
 
     Float_t areaBDT6=gr_BDT6->Integral()+0.5, areaBDT9=gr_BDT9->Integral()+0.5;
+    // Same Integral()+0.5 convention plot.C uses for its MC curves, applied here to the 15-point
+    // Data graphs for consistency -- note this is a much coarser estimate than the MC curves'
+    // (500 points vs. 15), so treat these as approximate.
+    Float_t areaBDT6_table2=gr_BDT6_table2->Integral()+0.5, areaBDT9_table2=gr_BDT9_table2->Integral()+0.5;
 
-    TLegend *leg = new TLegend(0.12, 0.12, 0.55, 0.42);
+    TLegend *leg = new TLegend(0.15, 0.15, 0.5, 0.4);
     leg->SetFillStyle(0);
-    leg->SetTextSize(0.025);
-    leg->SetLineWidth(0);
-    leg->AddEntry(gr_BDT9, Form("BDT 9var MC (AUC=%.3f)", areaBDT9), "l");
-    leg->AddEntry(gr_BDT6, Form("BDT 6var MC (AUC=%.3f)", areaBDT6), "l");
-    leg->AddEntry(gr_BDT6_table2, "BDT6 Data (Table2_TPR_FPR.txt / ratios.C array)", "p");
-    leg->AddEntry(gr_BDT9_table2, "BDT9 Data (Table2_TPR_FPR.txt / ratios.C array)", "p");
+    leg->SetBorderSize(0);
+    leg->SetTextSize(0.03);
+    leg->AddEntry(gr_BDT9, Form("BDT-9 Simulation (AUC=%.3f)", areaBDT9), "l");
+    leg->AddEntry(gr_BDT6, Form("BDT-6 Simulation (AUC=%.3f)", areaBDT6), "l");
+    leg->AddEntry(gr_BDT9_table2, Form("BDT-9 Data (AUC=%.3f)", areaBDT9_table2), "p");
+    leg->AddEntry(gr_BDT6_table2, Form("BDT-6 Data (AUC=%.3f)", areaBDT6_table2), "p");
     leg->Draw();
+
+    std::cout << "AUC BDT6 MC=" << areaBDT6 << "  BDT6 Data(Table2)=" << areaBDT6_table2 << std::endl;
+    std::cout << "AUC BDT9 MC=" << areaBDT9 << "  BDT9 Data(Table2)=" << areaBDT9_table2 << std::endl;
 
     // Relative paths -- run this from inside Lepton_ID_Analysis/ so output lands in
     // ROC_Diagnostics/ alongside this script (e.g. `root -l -b -q ROC_Diagnostics/roc_table2_comparison.C`).
