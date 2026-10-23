@@ -1,0 +1,13 @@
+Config, nvar, BDT_AUC, MLP_AUC
+S19 positives, 6, 0.9852, 0.9831
+S19 positives, 9, 0.9890, 0.9866
+S19 negatives, 6, 0.9854, 0.9831
+S19 negatives, 9, 0.9898, 0.9869
+F18in positives, 6, 0.9861, 0.9839
+F18in positives, 9, 0.9897, 0.9876
+F18in negatives, 6, 0.9863, 0.9842
+F18in negatives, 9, 0.9905, 0.9882
+F18out positives, 6, 0.9853, 0.9832
+F18out positives, 9, 0.9895, 0.9872
+F18out negatives, 6, 0.9868, 0.9848
+F18out negatives, 9, 0.9903, 0.9879
